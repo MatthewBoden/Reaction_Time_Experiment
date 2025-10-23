@@ -293,6 +293,10 @@ Click "Start Practice Trials" when you're ready to begin.
                                              font=('Arial', 12, 'bold'))
         self.practice_trial_label.pack()
         
+        self.practice_block_label = ttk.Label(progress_frame, text="Block: Practice", 
+                                             font=('Arial', 10))
+        self.practice_block_label.pack()
+        
         self.practice_progress = ttk.Progressbar(progress_frame, length=400, mode='determinate')
         self.practice_progress.pack(pady=10)
         
@@ -428,15 +432,21 @@ Click "Start Practice Trials" when you're ready to begin.
         self.notebook.select(1)
         
     def start_practice_trials(self):
-        """Start the practice trials (auto-completed)."""
+        """Start the practice trials."""
         if self.experiment_started:
             print("Experiment already started - ignoring call")
             return
             
-        print("Starting practice trials (auto-completed)")
+        print("Starting practice trials")
         
         # Disable the start button to prevent multiple clicks
         self.start_button.config(state='disabled')
+        
+        # Set up for practice trials
+        self.is_practice = True
+        self.current_trial = 0
+        self.trial_in_progress = False
+        self.trial_data = []
         
         # Create practice trial sequence (2 trials per modality)
         self.trial_sequence = []
@@ -448,27 +458,15 @@ Click "Start Practice Trials" when you're ready to begin.
                     'is_practice': True
                 })
         
-        # Auto-complete practice trials by creating fake trial data
-        self.trial_data = []
-        for i, trial in enumerate(self.trial_sequence):
-            trial_data = {
-                'participant_id': self.participant_data['participant_id'],
-                'initials': self.participant_data['initials'],
-                'trial_number': i + 1,
-                'modality': trial['modality'],
-                'is_practice': True,
-                'block': None,
-                'reaction_time': 250 + (i * 10),  # Fake reaction times
-                'error_type': None,
-                'is_error': False,
-                'timestamp': datetime.now().isoformat()
-            }
-            self.trial_data.append(trial_data)
+        # Shuffle practice trials
+        random.shuffle(self.trial_sequence)
         
-        print(f"Auto-completed {len(self.trial_sequence)} practice trials")
+        # Enable practice tab and switch to it
+        self.notebook.tab(2, state='normal')
+        self.notebook.select(2)
         
-        # Go directly to main experiment
-        self.start_main_experiment()
+        # Start the first practice trial
+        self.run_next_trial()
         
     def start_main_experiment(self):
         """Start the main experiment."""
@@ -526,7 +524,12 @@ Click "Start Practice Trials" when you're ready to begin.
             return
             
         if self.current_trial >= len(self.trial_sequence):
-            self.show_results()
+            if self.is_practice:
+                # Practice trials completed, start main experiment
+                self.start_main_experiment()
+            else:
+                # Main experiment completed, show results
+                self.show_results()
             return
         
         trial = self.trial_sequence[self.current_trial]
@@ -539,9 +542,14 @@ Click "Start Practice Trials" when you're ready to begin.
         total_trials = len(self.trial_sequence)
         progress = ((self.current_trial + 1) / total_trials) * 100
         
-        self.experiment_trial_label.config(text=f"Trial {self.current_trial + 1} of {total_trials}")
-        self.current_block_label.config(text=f"Block: {trial['modality'].title()}")
-        self.experiment_progress['value'] = progress
+        if self.is_practice:
+            self.practice_trial_label.config(text=f"Trial {self.current_trial + 1} of {total_trials}")
+            self.practice_block_label.config(text=f"Block: {trial['modality'].title()}")
+            self.practice_progress['value'] = progress
+        else:
+            self.experiment_trial_label.config(text=f"Trial {self.current_trial + 1} of {total_trials}")
+            self.current_block_label.config(text=f"Block: {trial['modality'].title()}")
+            self.experiment_progress['value'] = progress
         
     def run_trial(self, trial):
         """Execute a single trial."""
@@ -549,7 +557,10 @@ Click "Start Practice Trials" when you're ready to begin.
         self.hide_all_stimuli()
         
         # Show fixation cross
-        self.experiment_fixation_label.pack(expand=True)
+        if self.is_practice:
+            self.practice_fixation_label.pack(expand=True)
+        else:
+            self.experiment_fixation_label.pack(expand=True)
         self.root.update()
         
         # Random foreperiod
@@ -560,9 +571,14 @@ Click "Start Practice Trials" when you're ready to begin.
         
     def hide_all_stimuli(self):
         """Hide all stimulus elements."""
-        self.experiment_fixation_label.pack_forget()
-        self.experiment_stimulus_canvas.pack_forget()
-        self.experiment_feedback_label.config(text="")
+        if self.is_practice:
+            self.practice_fixation_label.pack_forget()
+            self.practice_stimulus_canvas.pack_forget()
+            self.practice_feedback_label.config(text="")
+        else:
+            self.experiment_fixation_label.pack_forget()
+            self.experiment_stimulus_canvas.pack_forget()
+            self.experiment_feedback_label.config(text="")
         
     def present_stimulus(self, modality):
         """Present the stimulus for the given modality."""
@@ -585,14 +601,22 @@ Click "Start Practice Trials" when you're ready to begin.
         
     def show_visual_stimulus(self):
         """Display the visual stimulus (green circle)."""
-        self.experiment_stimulus_canvas.pack(expand=True)
-        self.experiment_stimulus_canvas.delete("all")
-        self.experiment_stimulus_canvas.create_oval(50, 50, 150, 150, fill='green', outline='green')
+        if self.is_practice:
+            self.practice_stimulus_canvas.pack(expand=True)
+            self.practice_stimulus_canvas.delete("all")
+            self.practice_stimulus_canvas.create_oval(50, 50, 150, 150, fill='green', outline='green')
+        else:
+            self.experiment_stimulus_canvas.pack(expand=True)
+            self.experiment_stimulus_canvas.delete("all")
+            self.experiment_stimulus_canvas.create_oval(50, 50, 150, 150, fill='green', outline='green')
         self.root.update()
         
     def hide_visual_stimulus(self):
         """Hide the visual stimulus."""
-        self.experiment_stimulus_canvas.pack_forget()
+        if self.is_practice:
+            self.practice_stimulus_canvas.pack_forget()
+        else:
+            self.experiment_stimulus_canvas.pack_forget()
         
     def play_auditory_stimulus(self):
         """Play the auditory stimulus (1000 Hz tone)."""
@@ -649,16 +673,28 @@ Click "Start Practice Trials" when you're ready to begin.
         
     def show_feedback(self, reaction_time, error_type, is_error):
         """Show feedback for the trial."""
-        self.experiment_feedback_label.pack(pady=20)
-        
-        if is_error:
-            if error_type == 'anticipation':
-                self.experiment_feedback_label.config(text=f"Too fast! ({round(reaction_time)}ms)", 
-                                         foreground='red')
-            elif error_type == 'miss':
-                self.experiment_feedback_label.config(text="Missed!", foreground='red')
+        if self.is_practice:
+            self.practice_feedback_label.pack(pady=20)
+            
+            if is_error:
+                if error_type == 'anticipation':
+                    self.practice_feedback_label.config(text=f"Too fast! ({round(reaction_time)}ms)", 
+                                             foreground='red')
+                elif error_type == 'miss':
+                    self.practice_feedback_label.config(text="Missed!", foreground='red')
+            else:
+                self.practice_feedback_label.config(text=f"{round(reaction_time)}ms", foreground='green')
         else:
-            self.experiment_feedback_label.config(text=f"{round(reaction_time)}ms", foreground='green')
+            self.experiment_feedback_label.pack(pady=20)
+            
+            if is_error:
+                if error_type == 'anticipation':
+                    self.experiment_feedback_label.config(text=f"Too fast! ({round(reaction_time)}ms)", 
+                                             foreground='red')
+                elif error_type == 'miss':
+                    self.experiment_feedback_label.config(text="Missed!", foreground='red')
+            else:
+                self.experiment_feedback_label.config(text=f"{round(reaction_time)}ms", foreground='green')
         
         self.root.update()
         
