@@ -183,6 +183,22 @@ class ReactionTimeExperiment:
         computer_combo['values'] = ('Daily', 'Weekly', 'Monthly', 'Rarely')
         computer_combo.grid(row=8, column=1, sticky='w', padx=(10, 0), pady=5)
         
+        # Block order selection
+        ttk.Label(form_frame, text="Block Order:").grid(row=9, column=0, sticky='w', pady=5)
+        self.block_order_var = tk.StringVar()
+        
+        # Create Latin square options
+        latin_square_options = [
+            "Visual → Auditory → Combined",
+            "Auditory → Combined → Visual", 
+            "Combined → Visual → Auditory"
+        ]
+        
+        self.block_order_combo = ttk.Combobox(form_frame, textvariable=self.block_order_var, width=30, state='readonly')
+        self.block_order_combo['values'] = latin_square_options
+        self.block_order_combo.grid(row=9, column=1, sticky='w', padx=(10, 0), pady=5)
+        self.block_order_combo.set(latin_square_options[0])  # Set default
+        
         # Consent section
         consent_frame = ttk.LabelFrame(scrollable_frame, text="Consent Information", padding=20)
         consent_frame.pack(fill='x', padx=20, pady=10)
@@ -382,7 +398,7 @@ Click "Start Practice Trials" when you're ready to begin.
         # Check required fields
         if not all([self.initials_var.get(), self.age_var.get(), self.gender_var.get(), self.hand_var.get(),
                    self.language_var.get(), self.country_var.get(), self.colorblind_var.get(),
-                   self.computer_var.get()]):
+                   self.computer_var.get(), self.block_order_var.get()]):
             messagebox.showerror("Error", "Please fill in all required fields.")
             return
         
@@ -403,6 +419,7 @@ Click "Start Practice Trials" when you're ready to begin.
             'impairments': self.impairments_text.get('1.0', tk.END).strip(),
             'colorblind': self.colorblind_var.get(),
             'computer_usage': self.computer_var.get(),
+            'block_order': self.block_order_var.get(),
             'timestamp': datetime.now().isoformat()
         }
         
@@ -466,11 +483,22 @@ Click "Start Practice Trials" when you're ready to begin.
         self.current_block = 0
         self.trial_in_progress = False
         
-        # Determine block order using Latin square
-        participant_number = hash(self.participant_data['participant_id']) % 3
-        block_order = self.latin_square[participant_number]
+        # Get block order from participant selection
+        selected_order = self.participant_data['block_order']
         
-        print(f"Block order: {block_order}")
+        # Parse the selected order string to get the actual block order
+        if "Visual → Auditory → Combined" in selected_order:
+            block_order = ['visual', 'auditory', 'combined']
+        elif "Auditory → Combined → Visual" in selected_order:
+            block_order = ['auditory', 'combined', 'visual']
+        elif "Combined → Visual → Auditory" in selected_order:
+            block_order = ['combined', 'visual', 'auditory']
+        else:
+            # Fallback to Latin square if something goes wrong
+            participant_number = hash(self.participant_data['participant_id']) % 3
+            block_order = self.latin_square[participant_number]
+        
+        print(f"Selected block order: {block_order}")
         
         # Create main trial sequence
         self.trial_sequence = []
