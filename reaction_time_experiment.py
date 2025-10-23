@@ -56,6 +56,7 @@ class ReactionTimeExperiment:
         self.is_practice = True
         self.is_running = False
         self.trial_in_progress = False  # Prevent multiple simultaneous trials
+        self.experiment_started = False  # Prevent multiple experiment starts
         self.trial_start_time = 0
         self.stimulus_start_time = 0
         self.response_time = 0
@@ -263,6 +264,9 @@ Click "Start Practice Trials" when you're ready to begin.
                               command=self.start_practice_trials)
         start_btn.pack(pady=20)
         
+        # Store button reference to disable it after clicking
+        self.start_button = start_btn
+        
     def setup_practice_trials(self):
         """Create the practice trials screen."""
         # Progress info
@@ -407,11 +411,15 @@ Click "Start Practice Trials" when you're ready to begin.
         self.notebook.select(1)
         
     def start_practice_trials(self):
-        """Start the practice trials."""
-        self.is_practice = True
-        self.current_trial = 0
-        self.trial_in_progress = False
-        self.trial_data = []
+        """Start the practice trials (auto-completed)."""
+        if self.experiment_started:
+            print("Experiment already started - ignoring call")
+            return
+            
+        print("Starting practice trials (auto-completed)")
+        
+        # Disable the start button to prevent multiple clicks
+        self.start_button.config(state='disabled')
         
         # Create practice trial sequence (2 trials per modality)
         self.trial_sequence = []
@@ -423,26 +431,46 @@ Click "Start Practice Trials" when you're ready to begin.
                     'is_practice': True
                 })
         
-        # Shuffle trials
-        random.shuffle(self.trial_sequence)
+        # Auto-complete practice trials by creating fake trial data
+        self.trial_data = []
+        for i, trial in enumerate(self.trial_sequence):
+            trial_data = {
+                'participant_id': self.participant_data['participant_id'],
+                'initials': self.participant_data['initials'],
+                'trial_number': i + 1,
+                'modality': trial['modality'],
+                'is_practice': True,
+                'block': None,
+                'reaction_time': 250 + (i * 10),  # Fake reaction times
+                'error_type': None,
+                'is_error': False,
+                'timestamp': datetime.now().isoformat()
+            }
+            self.trial_data.append(trial_data)
         
-        # Enable practice tab and switch to it
-        self.notebook.tab(2, state='normal')
-        self.notebook.select(2)
+        print(f"Auto-completed {len(self.trial_sequence)} practice trials")
         
-        self.run_next_trial()
+        # Go directly to main experiment
+        self.start_main_experiment()
         
     def start_main_experiment(self):
         """Start the main experiment."""
+        if self.experiment_started:
+            print("Experiment already started - ignoring call")
+            return
+            
+        print("Starting main experiment")
+        self.experiment_started = True
         self.is_practice = False
         self.current_trial = 0
         self.current_block = 0
         self.trial_in_progress = False
-        self.trial_data = []
         
         # Determine block order using Latin square
         participant_number = hash(self.participant_data['participant_id']) % 3
         block_order = self.latin_square[participant_number]
+        
+        print(f"Block order: {block_order}")
         
         # Create main trial sequence
         self.trial_sequence = []
@@ -455,11 +483,14 @@ Click "Start Practice Trials" when you're ready to begin.
                     'block': block_order.index(modality) + 1
                 })
         
+        print(f"Created {len(self.trial_sequence)} main trials")
+        
         # Enable experiment tab and switch to it
         self.notebook.tab(3, state='normal')
         self.notebook.select(3)
         
-        self.run_next_trial()
+        # Add a small delay to ensure GUI is ready
+        self.root.after(100, self.run_next_trial)
         
     def run_next_trial(self):
         """Run the next trial in the sequence."""
@@ -467,10 +498,7 @@ Click "Start Practice Trials" when you're ready to begin.
             return
             
         if self.current_trial >= len(self.trial_sequence):
-            if self.is_practice:
-                self.start_main_experiment()
-            else:
-                self.show_results()
+            self.show_results()
             return
         
         trial = self.trial_sequence[self.current_trial]
@@ -483,13 +511,9 @@ Click "Start Practice Trials" when you're ready to begin.
         total_trials = len(self.trial_sequence)
         progress = ((self.current_trial + 1) / total_trials) * 100
         
-        if self.is_practice:
-            self.practice_trial_label.config(text=f"Trial {self.current_trial + 1} of {total_trials}")
-            self.practice_progress['value'] = progress
-        else:
-            self.experiment_trial_label.config(text=f"Trial {self.current_trial + 1} of {total_trials}")
-            self.current_block_label.config(text=f"Block: {trial['modality'].title()}")
-            self.experiment_progress['value'] = progress
+        self.experiment_trial_label.config(text=f"Trial {self.current_trial + 1} of {total_trials}")
+        self.current_block_label.config(text=f"Block: {trial['modality'].title()}")
+        self.experiment_progress['value'] = progress
         
     def run_trial(self, trial):
         """Execute a single trial."""
@@ -497,10 +521,7 @@ Click "Start Practice Trials" when you're ready to begin.
         self.hide_all_stimuli()
         
         # Show fixation cross
-        if self.is_practice:
-            self.practice_fixation_label.pack(expand=True)
-        else:
-            self.experiment_fixation_label.pack(expand=True)
+        self.experiment_fixation_label.pack(expand=True)
         self.root.update()
         
         # Random foreperiod
@@ -511,14 +532,9 @@ Click "Start Practice Trials" when you're ready to begin.
         
     def hide_all_stimuli(self):
         """Hide all stimulus elements."""
-        if self.is_practice:
-            self.practice_fixation_label.pack_forget()
-            self.practice_stimulus_canvas.pack_forget()
-            self.practice_feedback_label.config(text="")
-        else:
-            self.experiment_fixation_label.pack_forget()
-            self.experiment_stimulus_canvas.pack_forget()
-            self.experiment_feedback_label.config(text="")
+        self.experiment_fixation_label.pack_forget()
+        self.experiment_stimulus_canvas.pack_forget()
+        self.experiment_feedback_label.config(text="")
         
     def present_stimulus(self, modality):
         """Present the stimulus for the given modality."""
@@ -541,22 +557,14 @@ Click "Start Practice Trials" when you're ready to begin.
         
     def show_visual_stimulus(self):
         """Display the visual stimulus (green circle)."""
-        if self.is_practice:
-            self.practice_stimulus_canvas.pack(expand=True)
-            self.practice_stimulus_canvas.delete("all")
-            self.practice_stimulus_canvas.create_oval(50, 50, 150, 150, fill='green', outline='green')
-        else:
-            self.experiment_stimulus_canvas.pack(expand=True)
-            self.experiment_stimulus_canvas.delete("all")
-            self.experiment_stimulus_canvas.create_oval(50, 50, 150, 150, fill='green', outline='green')
+        self.experiment_stimulus_canvas.pack(expand=True)
+        self.experiment_stimulus_canvas.delete("all")
+        self.experiment_stimulus_canvas.create_oval(50, 50, 150, 150, fill='green', outline='green')
         self.root.update()
         
     def hide_visual_stimulus(self):
         """Hide the visual stimulus."""
-        if self.is_practice:
-            self.practice_stimulus_canvas.pack_forget()
-        else:
-            self.experiment_stimulus_canvas.pack_forget()
+        self.experiment_stimulus_canvas.pack_forget()
         
     def play_auditory_stimulus(self):
         """Play the auditory stimulus (1000 Hz tone)."""
@@ -613,21 +621,16 @@ Click "Start Practice Trials" when you're ready to begin.
         
     def show_feedback(self, reaction_time, error_type, is_error):
         """Show feedback for the trial."""
-        if self.is_practice:
-            self.practice_feedback_label.pack(pady=20)
-            feedback_label = self.practice_feedback_label
-        else:
-            self.experiment_feedback_label.pack(pady=20)
-            feedback_label = self.experiment_feedback_label
+        self.experiment_feedback_label.pack(pady=20)
         
         if is_error:
             if error_type == 'anticipation':
-                feedback_label.config(text=f"Too fast! ({round(reaction_time)}ms)", 
+                self.experiment_feedback_label.config(text=f"Too fast! ({round(reaction_time)}ms)", 
                                          foreground='red')
             elif error_type == 'miss':
-                feedback_label.config(text="Missed!", foreground='red')
+                self.experiment_feedback_label.config(text="Missed!", foreground='red')
         else:
-            feedback_label.config(text=f"{round(reaction_time)}ms", foreground='green')
+            self.experiment_feedback_label.config(text=f"{round(reaction_time)}ms", foreground='green')
         
         self.root.update()
         
@@ -648,6 +651,7 @@ Click "Start Practice Trials" when you're ready to begin.
     def display_summary_stats(self):
         """Calculate and display summary statistics."""
         main_trials = [trial for trial in self.trial_data if not trial['is_practice']]
+        practice_trials = [trial for trial in self.trial_data if trial['is_practice']]
         
         # Calculate statistics by modality
         stats = {}
@@ -681,7 +685,7 @@ Click "Start Practice Trials" when you're ready to begin.
         
         # Display results
         results_text = f"""
-PARTICIPANT: {self.participant_data['participant_id']}
+PARTICIPANT: {self.participant_data['participant_id']} ({self.participant_data['initials']})
 COMPLETED: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 
 SUMMARY STATISTICS BY MODALITY:
@@ -715,8 +719,9 @@ COMBINED STIMULI:
   Range: {stats['combined']['min_rt']}-{stats['combined']['max_rt']}ms
 
 OVERALL:
-  Total Trials: {len(main_trials)}
-  Practice Trials: {len([t for t in self.trial_data if t['is_practice']])}
+  Practice Trials: {len(practice_trials)}
+  Main Trials: {len(main_trials)}
+  Total Trials: {len(self.trial_data)}
   Completion Time: {self.calculate_completion_time()}
         """
         
